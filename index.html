@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Óculos seguindo rosto (v2 debug)</title>
+  <title>Óculos seguindo rosto (FaceMesh clássico)</title>
 
-  <!-- mesma versão do wasm -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js"
-    crossorigin="anonymous"></script>
+  <!-- MediaPipe FaceMesh clássico (mais compatível iOS) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
 
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
@@ -31,7 +31,7 @@
 </head>
 <body>
   <div id="wrap">
-    <video id="video" autoplay playsinline muted></video>
+    <video id="video" playsinline></video>
     <canvas id="canvas"></canvas>
   </div>
 
@@ -48,9 +48,9 @@
     const startBtn = document.getElementById("startBtn");
     const msg = document.getElementById("msg");
 
-    let faceLandmarker, running=false, glassesReady=false;
+    let glassesReady = false;
 
-    // óculos embutido
+    // óculos simples embutido em SVG
     const glassesImg = new Image();
     const glassesSVG = `
       <svg xmlns="http://www.w3.org/2000/svg" width="600" height="220" viewBox="0 0 600 220">
@@ -65,120 +65,88 @@
     glassesImg.onload = () => glassesReady = true;
     glassesImg.src = "data:image/svg+xml;utf8," + encodeURIComponent(glassesSVG);
 
-    function fitCanvasToVideo(){
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
+    function fitCanvas() {
+      const vw = video.videoWidth, vh = video.videoHeight;
       if (vw && vh && (canvas.width !== vw || canvas.height !== vh)) {
         canvas.width = vw;
         canvas.height = vh;
       }
     }
 
-    async function startCamera(){
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video:{facingMode:"user"},
-        audio:false
-      });
-      video.srcObject = stream;
-
-      await new Promise(res => video.onloadedmetadata = res);
-      await video.play();
-      fitCanvasToVideo();
-    }
-
-    async function initLandmarker(){
-      const Vision = window.mediapipe.tasks.vision;
-      const fileset = await Vision.FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-      );
-
-      // opções oficiais de confiança :contentReference[oaicite:2]{index=2}
-      const opts = {
-        baseOptions:{
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-          delegate:"GPU"
-        },
-        runningMode:"VIDEO",
-        numFaces:1,
-        minFaceDetectionConfidence:0.5,
-        minFacePresenceConfidence:0.5,
-        minTrackingConfidence:0.5
-      };
-
-      try{
-        faceLandmarker = await Vision.FaceLandmarker.createFromOptions(fileset, opts);
-      }catch(e){
-        // fallback CPU
-        delete opts.baseOptions.delegate;
-        faceLandmarker = await Vision.FaceLandmarker.createFromOptions(fileset, opts);
-      }
-    }
-
     function drawGlasses(landmarks){
-      const leftEye = landmarks[33];
-      const rightEye = landmarks[263];
-
-      const w = canvas.width, h=canvas.height;
-      const lx = leftEye.x*w, ly=leftEye.y*h;
-      const rx = rightEye.x*w, ry = rightEye.y*h;
-
-      const cx=(lx+rx)/2, cy=(ly+ry)/2;
-      const dx=rx-lx, dy=ry-ly;
-      const dist=Math.hypot(dx,dy);
-      const ang=Math.atan2(dy,dx);
-
-      const gW = dist*2.2;
-      const gH = gW*(220/600);
-
       if(!glassesReady) return;
 
+      // FaceMesh usa a mesma numeração: 33 e 263 = cantos externos dos olhos
+      const leftEye  = landmarks[33];
+      const rightEye = landmarks[263];
+
+      const w = canvas.width, h = canvas.height;
+      const lx = leftEye.x * w, ly = leftEye.y * h;
+      const rx = rightEye.x * w, ry = rightEye.y * h;
+
+      const cx = (lx + rx) / 2;
+      const cy = (ly + ry) / 2;
+
+      const dx = rx - lx, dy = ry - ly;
+      const dist = Math.hypot(dx, dy);
+      const ang = Math.atan2(dy, dx);
+
+      const gW = dist * 2.2;
+      const gH = gW * (220/600);
+
       ctx.save();
-      ctx.translate(cx,cy);
+      ctx.translate(cx, cy);
       ctx.rotate(ang);
       ctx.drawImage(glassesImg, -gW/2, -gH/2, gW, gH);
       ctx.restore();
     }
 
-    function drawDebugText(text){
-      ctx.save();
-      ctx.setTransform(1,0,0,1,0,0);
-      ctx.font = "20px system-ui, sans-serif";
-      ctx.fillStyle = "white";
-      ctx.fillText(text, 20, 40);
-      ctx.restore();
-    }
+    startBtn.addEventListener("click", async () => {
+      msg.textContent = "Iniciando...";
+      try {
+        // cria FaceMesh
+        const faceMesh = new FaceMesh({
+          locateFile: (file) =>
+            `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
+        });
 
-    function loop(){
-      if(!running) return;
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
 
-      fitCanvasToVideo();
-      const ts = performance.now();
-      const res = faceLandmarker.detectForVideo(video, ts);
+        faceMesh.onResults((results) => {
+          fitCanvas();
+          ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      ctx.clearRect(0,0,canvas.width,canvas.height);
+          if (results.multiFaceLandmarks && results.multiFaceLandmarks.length) {
+            drawGlasses(results.multiFaceLandmarks[0]);
+          } else {
+            // debug simples
+            ctx.font = "20px system-ui";
+            ctx.fillStyle = "white";
+            ctx.fillText("Rosto não detectado", 20, 40);
+          }
+        });
 
-      if(res && res.faceLandmarks && res.faceLandmarks.length){
-        drawGlasses(res.faceLandmarks[0]);
-      } else {
-        drawDebugText("Rosto não detectado");
-      }
+        // inicia câmera com camera_utils (padrão MediaPipe) :contentReference[oaicite:1]{index=1}
+        const camera = new Camera(video, {
+          onFrame: async () => {
+            await faceMesh.send({ image: video });
+          },
+          width: 1280,
+          height: 720,
+          facingMode: "user"
+        });
 
-      requestAnimationFrame(loop);
-    }
+        await camera.start();
+        ui.style.display = "none";
 
-    startBtn.addEventListener("click", async ()=>{
-      msg.textContent = "Carregando modelo...";
-      try{
-        await startCamera();
-        await initLandmarker();
-        ui.style.display="none";
-        running=true;
-        loop();
-      }catch(e){
+      } catch (e) {
         console.error(e);
-        msg.textContent =
-          "Falhou ao abrir câmera/modelo. Confere permissão/HTTPS.";
+        msg.textContent = "Falhou. Confere permissão/HTTPS.";
       }
     });
   </script>
