@@ -3,20 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Óculos seguindo rosto (FaceMesh clássico)</title>
+  <title>Óculos seguindo rosto (Jeeliz)</title>
 
-  <!-- MediaPipe FaceMesh clássico (mais compatível iOS) -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
+  <!-- Jeeliz hospedado oficialmente (já inclui NN_DEFAULT.json no mesmo path) -->
+  <script src="https://appstatic.jeeliz.com/faceFilter/jeelizFaceFilter.js"></script>
+  <script src="https://appstatic.jeeliz.com/faceFilter/JeelizResizer.js"></script>
 
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     html,body{width:100%;height:100%;background:#000;overflow:hidden;}
     #wrap{position:fixed;inset:0;background:#000;}
-    video,canvas{
+    canvas{
       position:absolute;inset:0;width:100vw;height:100vh;object-fit:cover;
-      transform:scaleX(-1); /* selfie espelhada */
+      transform: scaleX(-1); /* selfie espelhada */
     }
+    #overlayCanvas{pointer-events:none;}
     #ui{
       position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
       flex-direction:column;gap:10px;background:rgba(0,0,0,.85);z-index:10;color:#fff;
@@ -31,26 +32,27 @@
 </head>
 <body>
   <div id="wrap">
-    <video id="video" playsinline></video>
-    <canvas id="canvas"></canvas>
+    <!-- Canvas do Jeeliz (vídeo + tracking) -->
+    <canvas id="jeeFaceFilterCanvas"></canvas>
+    <!-- Canvas 2D por cima (óculos) -->
+    <canvas id="overlayCanvas"></canvas>
   </div>
 
   <div id="ui">
     <button id="startBtn">Ativar câmera</button>
-    <div id="msg">Permita a câmera. O óculos vai seguir seus olhos.</div>
+    <div id="msg">Permita a câmera. O óculos vai seguir seu rosto.</div>
   </div>
 
   <script>
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
     const ui = document.getElementById("ui");
     const startBtn = document.getElementById("startBtn");
     const msg = document.getElementById("msg");
 
-    let glassesReady = false;
+    const overlay = document.getElementById("overlayCanvas");
+    const octx = overlay.getContext("2d");
 
     // óculos simples embutido em SVG
+    let glassesReady = false;
     const glassesImg = new Image();
     const glassesSVG = `
       <svg xmlns="http://www.w3.org/2000/svg" width="600" height="220" viewBox="0 0 600 220">
@@ -65,89 +67,76 @@
     glassesImg.onload = () => glassesReady = true;
     glassesImg.src = "data:image/svg+xml;utf8," + encodeURIComponent(glassesSVG);
 
-    function fitCanvas() {
-      const vw = video.videoWidth, vh = video.videoHeight;
-      if (vw && vh && (canvas.width !== vw || canvas.height !== vh)) {
-        canvas.width = vw;
-        canvas.height = vh;
+    function fitOverlayToJeeliz() {
+      const jee = document.getElementById("jeeFaceFilterCanvas");
+      if (overlay.width !== jee.width || overlay.height !== jee.height) {
+        overlay.width = jee.width;
+        overlay.height = jee.height;
       }
     }
 
-    function drawGlasses(landmarks){
-      if(!glassesReady) return;
+    function drawGlasses(detectState){
+      fitOverlayToJeeliz();
+      octx.clearRect(0,0,overlay.width,overlay.height);
 
-      // FaceMesh usa a mesma numeração: 33 e 263 = cantos externos dos olhos
-      const leftEye  = landmarks[33];
-      const rightEye = landmarks[263];
+      if (!glassesReady || detectState.detected < 0.6) {
+        octx.font = "20px system-ui";
+        octx.fillStyle = "white";
+        octx.fillText("Procurando rosto...", 20, 40);
+        return;
+      }
 
-      const w = canvas.width, h = canvas.height;
-      const lx = leftEye.x * w, ly = leftEye.y * h;
-      const rx = rightEye.x * w, ry = rightEye.y * h;
+      const cw = overlay.width, ch = overlay.height;
+      const halfW = cw/2, halfH = ch/2;
 
-      const cx = (lx + rx) / 2;
-      const cy = (ly + ry) / 2;
+      // Jeeliz retorna centro do rosto em -1..1
+      const cx = detectState.x * halfW + halfW;
+      const cy = detectState.y * halfH + halfH;
 
-      const dx = rx - lx, dy = ry - ly;
-      const dist = Math.hypot(dx, dy);
-      const ang = Math.atan2(dy, dx);
-
-      const gW = dist * 2.2;
+      // escala aproximada do rosto (s)
+      const gW = detectState.s * cw * 2.2;
       const gH = gW * (220/600);
 
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(ang);
-      ctx.drawImage(glassesImg, -gW/2, -gH/2, gW, gH);
-      ctx.restore();
+      // rotação Z (inclinação da cabeça)
+      const ang = detectState.rz || 0;
+
+      octx.save();
+      octx.translate(cx, cy - gH*0.1); // sobe um pouco p/ alinhar nos olhos
+      octx.rotate(ang);
+      octx.drawImage(glassesImg, -gW/2, -gH/2, gW, gH);
+      octx.restore();
     }
 
-    startBtn.addEventListener("click", async () => {
+    startBtn.addEventListener("click", () => {
       msg.textContent = "Iniciando...";
-      try {
-        // cria FaceMesh
-        const faceMesh = new FaceMesh({
-          locateFile: (file) =>
-            `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
-        });
 
-        faceMesh.setOptions({
-          maxNumFaces: 1,
-          refineLandmarks: true,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5
-        });
-
-        faceMesh.onResults((results) => {
-          fitCanvas();
-          ctx.clearRect(0,0,canvas.width,canvas.height);
-
-          if (results.multiFaceLandmarks && results.multiFaceLandmarks.length) {
-            drawGlasses(results.multiFaceLandmarks[0]);
-          } else {
-            // debug simples
-            ctx.font = "20px system-ui";
-            ctx.fillStyle = "white";
-            ctx.fillText("Rosto não detectado", 20, 40);
+      // Jeeliz recomenda usar o Resizer para melhor resolução no mobile :contentReference[oaicite:2]{index=2}
+      JeelizResizer.size_canvas({
+        canvasId: "jeeFaceFilterCanvas",
+        callback: function(isError, bestVideoSettings){
+          if (isError){
+            msg.textContent = "Erro ao iniciar câmera.";
+            return;
           }
-        });
 
-        // inicia câmera com camera_utils (padrão MediaPipe) :contentReference[oaicite:1]{index=1}
-        const camera = new Camera(video, {
-          onFrame: async () => {
-            await faceMesh.send({ image: video });
-          },
-          width: 1280,
-          height: 720,
-          facingMode: "user"
-        });
-
-        await camera.start();
-        ui.style.display = "none";
-
-      } catch (e) {
-        console.error(e);
-        msg.textContent = "Falhou. Confere permissão/HTTPS.";
-      }
+          JEELIZFACEFILTER.init({
+            canvasId: "jeeFaceFilterCanvas",
+            NNCPath: "https://appstatic.jeeliz.com/faceFilter/", // modelo NN_DEFAULT.json
+            videoSettings: bestVideoSettings,
+            callbackReady: function(errCode, spec){
+              if (errCode){
+                console.log("Jeeliz erro:", errCode);
+                msg.textContent = "Falhou no iPhone (WebGL).";
+                return;
+              }
+              ui.style.display = "none";
+            },
+            callbackTrack: function(detectState){
+              drawGlasses(detectState); // detectState tem x,y,s,rz e detected :contentReference[oaicite:3]{index=3}
+            }
+          });
+        }
+      });
     });
   </script>
 </body>
