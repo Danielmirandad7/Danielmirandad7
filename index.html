@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Óculos seguindo rosto (iOS OK)</title>
+
+  <!-- Jeito oficial via CDN (global) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"
+    crossorigin="anonymous"></script>
+
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body{width:100%;height:100%;background:#000;overflow:hidden;}
+    #wrap{position:fixed;inset:0;background:#000;}
+    video,canvas{
+      position:absolute;inset:0;width:100vw;height:100vh;object-fit:cover;
+      transform:scaleX(-1); /* selfie espelhada */
+    }
+    #ui{
+      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      flex-direction:column;gap:10px;background:rgba(0,0,0,.85);z-index:10;color:#fff;
+      font-family:system-ui,sans-serif;text-align:center;padding:20px;
+    }
+    #startBtn{
+      font-size:18px;padding:12px 18px;border-radius:10px;border:none;
+      background:#fff;color:#000;font-weight:700;
+    }
+    #msg{font-size:14px;opacity:.85;max-width:90vw;}
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="ui">
+    <button id="startBtn">Ativar câmera</button>
+    <div id="msg">Permita a câmera. O óculos vai seguir seus olhos.</div>
+  </div>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const ui = document.getElementById("ui");
+    const startBtn = document.getElementById("startBtn");
+    const msg = document.getElementById("msg");
+
+    let faceLandmarker, running=false;
+
+    // Óculos simples em SVG embutido
+    const glassesImg = new Image();
+    const glassesSVG = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="600" height="220" viewBox="0 0 600 220">
+        <g fill="none" stroke="#ff2d2d" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="40" width="210" height="140" rx="60"/>
+          <rect x="350" y="40" width="210" height="140" rx="60"/>
+          <path d="M250 110 L350 110"/>
+          <path d="M40 90 L5 70"/>
+          <path d="M560 90 L595 70"/>
+        </g>
+      </svg>`;
+    glassesImg.src = "data:image/svg+xml;utf8," + encodeURIComponent(glassesSVG);
+
+    async function startCamera(){
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video:{facingMode:"user"},
+        audio:false
+      });
+      video.srcObject = stream;
+
+      await new Promise(res => video.onloadedmetadata = res);
+      await video.play();
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+    }
+
+    async function initLandmarker(){
+      const Vision = window.mediapipe.tasks.vision;
+      const fileset = await Vision.FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+      );
+
+      // tenta GPU, se falhar cai pra CPU
+      try{
+        faceLandmarker = await Vision.FaceLandmarker.createFromOptions(fileset,{
+          baseOptions:{
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate:"GPU"
+          },
+          runningMode:"VIDEO",
+          numFaces:1
+        });
+      }catch(e){
+        console.warn("GPU falhou, usando CPU", e);
+        faceLandmarker = await Vision.FaceLandmarker.createFromOptions(fileset,{
+          baseOptions:{
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+          },
+          runningMode:"VIDEO",
+          numFaces:1
+        });
+      }
+    }
+
+    function drawGlasses(landmarks){
+      const leftEye = landmarks[33];
+      const rightEye = landmarks[263];
+
+      const w = canvas.width, h=canvas.height;
+      const lx = leftEye.x*w, ly=leftEye.y*h;
+      const rx = rightEye.x*w, ry=rightEye.y*h;
+
+      const cx=(lx+rx)/2, cy=(ly+ry)/2;
+      const dx=rx-lx, dy=ry-ly;
+      const dist=Math.hypot(dx,dy);
+      const ang=Math.atan2(dy,dx);
+
+      const gW = dist*2.2;
+      const gH = gW*(220/600);
+
+      ctx.save();
+      ctx.translate(cx,cy);
+      ctx.rotate(ang);
+      ctx.drawImage(glassesImg, -gW/2, -gH/2, gW, gH);
+      ctx.restore();
+    }
+
+    function loop(){
+      if(!running) return;
+
+      const ts = performance.now();
+      const res = faceLandmarker.detectForVideo(video, ts);
+
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      if(res && res.faceLandmarks && res.faceLandmarks.length){
+        drawGlasses(res.faceLandmarks[0]);
+      }
+      requestAnimationFrame(loop);
+    }
+
+    startBtn.addEventListener("click", async ()=>{
+      msg.textContent = "Carregando modelo...";
+      try{
+        await startCamera();
+        await initLandmarker();
+        ui.style.display="none";
+        running=true;
+        loop();
+      }catch(e){
+        console.error(e);
+        msg.textContent =
+          "Falhou ao abrir câmera/modelo. Confere HTTPS e permissão da câmera.";
+      }
+    });
+  </script>
+</body>
+</html>
