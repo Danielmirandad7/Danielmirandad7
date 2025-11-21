@@ -1,143 +1,422 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Óculos seguindo rosto (Jeeliz)</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DK Arbitragem – Plataforma Completa</title>
 
-  <!-- Jeeliz hospedado oficialmente (já inclui NN_DEFAULT.json no mesmo path) -->
-  <script src="https://appstatic.jeeliz.com/faceFilter/jeelizFaceFilter.js"></script>
-  <script src="https://appstatic.jeeliz.com/faceFilter/JeelizResizer.js"></script>
-
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box;}
-    html,body{width:100%;height:100%;background:#000;overflow:hidden;}
-    #wrap{position:fixed;inset:0;background:#000;}
-    canvas{
-      position:absolute;inset:0;width:100vw;height:100vh;object-fit:cover;
-      transform: scaleX(-1); /* selfie espelhada */
-    }
-    #overlayCanvas{pointer-events:none;}
-    #ui{
-      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-      flex-direction:column;gap:10px;background:rgba(0,0,0,.85);z-index:10;color:#fff;
-      font-family:system-ui,sans-serif;text-align:center;padding:20px;
-    }
-    #startBtn{
-      font-size:18px;padding:12px 18px;border-radius:10px;border:none;
-      background:#fff;color:#000;font-weight:700;
-    }
-    #msg{font-size:14px;opacity:.85;max-width:90vw;}
-  </style>
+<style>
+  :root{
+    --bg:#f5f7fb; --card:#fff; --ink:#0f172a; --muted:#64748b;
+    --line:#e2e8f0; --brand:#2563eb; --brand2:#0ea5e9; --good:#16a34a; --bad:#dc2626;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif;}
+  body{margin:0; background:var(--bg); color:var(--ink);}
+  .app{display:grid; grid-template-columns:240px 1fr; min-height:100vh;}
+  aside{
+    background:#0b1220; color:#e5e7eb; padding:18px 14px; position:sticky; top:0; height:100vh;
+  }
+  .logo{font-weight:800; letter-spacing:.5px; font-size:18px; margin-bottom:16px;}
+  .nav a{
+    display:flex; align-items:center; gap:10px; color:#cbd5e1; text-decoration:none;
+    padding:10px 10px; border-radius:10px; margin-bottom:6px; font-size:14px;
+  }
+  .nav a.active, .nav a:hover{background:#111a2e; color:#fff;}
+  main{padding:18px 18px 40px;}
+  header{
+    display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;
+  }
+  .tabs{display:flex; gap:8px; flex-wrap:wrap;}
+  .tab{
+    border:1px solid var(--line); background:var(--card); padding:8px 12px; border-radius:999px;
+    font-size:14px; cursor:pointer; color:var(--muted);
+  }
+  .tab.active{border-color:var(--brand); color:var(--brand); font-weight:600;}
+  .top-actions{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  .btn{
+    background:var(--brand); color:#fff; border:none; padding:9px 12px; border-radius:10px; cursor:pointer;
+    font-weight:600; font-size:14px;
+  }
+  .btn.ghost{background:#e9eefc; color:#1e3a8a;}
+  .btn.gray{background:#0f172a;}
+  .row{display:grid; grid-template-columns:1.2fr .8fr; gap:12px; margin-top:10px;}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px;
+    box-shadow:0 4px 16px rgba(15,23,42,.04);
+  }
+  .card h3{margin:0 0 10px 0; font-size:16px;}
+  .filters{
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:10px;
+  }
+  .filters .field{display:flex; flex-direction:column; gap:6px;}
+  label{font-size:12px; color:var(--muted);}
+  input, select{
+    border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:14px; outline:none;
+    background:#fff;
+  }
+  input:focus, select:focus{border-color:var(--brand2); box-shadow:0 0 0 3px rgba(14,165,233,0.12);}
+  .hint{font-size:12px; color:var(--muted); margin-top:6px;}
+  .table-wrap{margin-top:12px;}
+  table{width:100%; border-collapse:separate; border-spacing:0; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden;}
+  thead th{
+    text-align:left; font-size:12px; color:var(--muted); background:#f8fafc; padding:10px; border-bottom:1px solid var(--line);
+  }
+  tbody td{
+    padding:10px; border-bottom:1px solid var(--line); font-size:14px; vertical-align:middle;
+  }
+  tbody tr:hover{background:#f9fbff;}
+  .pill{display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; background:#eef2ff; color:#3730a3; font-weight:600;}
+  .spread.good{color:var(--good); font-weight:700;}
+  .spread.bad{color:var(--bad); font-weight:700;}
+  .muted{color:var(--muted); font-size:12px;}
+  .link{color:var(--brand); text-decoration:none; font-weight:600;}
+  .mini{font-size:12px;}
+  .loading{display:flex; gap:8px; align-items:center; font-size:14px; color:var(--muted);}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--brand); animation:pulse 1s infinite;}
+  @keyframes pulse{0%{opacity:.2} 50%{opacity:1} 100%{opacity:.2}}
+  @media (max-width:1100px){
+    .app{grid-template-columns:1fr;}
+    aside{position:relative; height:auto;}
+    .row{grid-template-columns:1fr;}
+    .filters{grid-template-columns:repeat(2, 1fr);}
+  }
+  @media (max-width:600px){
+    .filters{grid-template-columns:1fr;}
+  }
+</style>
 </head>
+
 <body>
-  <div id="wrap">
-    <!-- Canvas do Jeeliz (vídeo + tracking) -->
-    <canvas id="jeeFaceFilterCanvas"></canvas>
-    <!-- Canvas 2D por cima (óculos) -->
-    <canvas id="overlayCanvas"></canvas>
-  </div>
+<div class="app">
+  <aside>
+    <div class="logo">DKARBITRAGE</div>
+    <div class="nav">
+      <a class="active" href="#" onclick="return false;">Arbitrage Screener</a>
+      <a href="#" onclick="alert('Em breve: Rankings / Candles / Alerts')">Rankings</a>
+      <a href="#" onclick="alert('Em breve: Alertas via Telegram')">Alertas</a>
+      <a href="#" onclick="alert('Em breve: Configurações')">Config</a>
+    </div>
+    <div style="margin-top:16px;" class="muted">
+      Baseado na API pública do Crypto Arbitrage Service.
+    </div>
+  </aside>
 
-  <div id="ui">
-    <button id="startBtn">Ativar câmera</button>
-    <div id="msg">Permita a câmera. O óculos vai seguir seu rosto.</div>
-  </div>
+  <main>
+    <header>
+      <div class="tabs">
+        <button class="tab active" data-tab="spot">Screener Spot</button>
+        <button class="tab" data-tab="future">Spot + Futuros</button>
+        <button class="tab" data-tab="highyield">High-Yield</button>
+        <button class="tab" data-tab="candles">Candlestick</button>
+      </div>
 
-  <script>
-    const ui = document.getElementById("ui");
-    const startBtn = document.getElementById("startBtn");
-    const msg = document.getElementById("msg");
+      <div class="top-actions">
+        <label class="mini">Auto-refresh
+          <input id="autoRefresh" type="checkbox" checked />
+        </label>
+        <select id="refreshSec">
+          <option value="10">10s</option>
+          <option value="19" selected>19s</option>
+          <option value="30">30s</option>
+          <option value="60">60s</option>
+        </select>
+        <button class="btn ghost" id="btnReload">Atualizar</button>
+      </div>
+    </header>
 
-    const overlay = document.getElementById("overlayCanvas");
-    const octx = overlay.getContext("2d");
+    <div class="row">
+      <section class="card">
+        <h3>Filtros</h3>
 
-    // óculos simples embutido em SVG
-    let glassesReady = false;
-    const glassesImg = new Image();
-    const glassesSVG = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="600" height="220" viewBox="0 0 600 220">
-        <g fill="none" stroke="#ff2d2d" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="40" y="40" width="210" height="140" rx="60"/>
-          <rect x="350" y="40" width="210" height="140" rx="60"/>
-          <path d="M250 110 L350 110"/>
-          <path d="M40 90 L5 70"/>
-          <path d="M560 90 L595 70"/>
-        </g>
-      </svg>`;
-    glassesImg.onload = () => glassesReady = true;
-    glassesImg.src = "data:image/svg+xml;utf8," + encodeURIComponent(glassesSVG);
+        <div class="filters">
+          <div class="field">
+            <label>BASE URL da API</label>
+            <input id="baseUrl" value="http://localhost:8080" placeholder="https://seu-dominio.com" />
+          </div>
 
-    function fitOverlayToJeeliz() {
-      const jee = document.getElementById("jeeFaceFilterCanvas");
-      if (overlay.width !== jee.width || overlay.height !== jee.height) {
-        overlay.width = jee.width;
-        overlay.height = jee.height;
-      }
-    }
+          <div class="field">
+            <label>Exchanges para comprar (spot)</label>
+            <input id="buyEx" value="Mercado Bitcoin,Binance,Bitget" />
+          </div>
 
-    function drawGlasses(detectState){
-      fitOverlayToJeeliz();
-      octx.clearRect(0,0,overlay.width,overlay.height);
+          <div class="field">
+            <label>Exchanges para vender (spot)</label>
+            <input id="sellEx" value="Binance,Gate.io,OKX" />
+          </div>
 
-      if (!glassesReady || detectState.detected < 0.6) {
-        octx.font = "20px system-ui";
-        octx.fillStyle = "white";
-        octx.fillText("Procurando rosto...", 20, 40);
-        return;
-      }
+          <div class="field">
+            <label>Min. spread %</label>
+            <input id="minSpread" type="number" step="0.01" value="0.20" />
+          </div>
 
-      const cw = overlay.width, ch = overlay.height;
-      const halfW = cw/2, halfH = ch/2;
+          <div class="field">
+            <label>Max. spread %</label>
+            <input id="maxSpread" type="number" step="0.01" value="25" />
+          </div>
 
-      // Jeeliz retorna centro do rosto em -1..1
-      const cx = detectState.x * halfW + halfW;
-      const cy = detectState.y * halfH + halfH;
+          <div class="field">
+            <label>Filtrar por moeda (ex: BTC,ETH)</label>
+            <input id="filterSymbol" placeholder="vazio = todas" />
+          </div>
 
-      // escala aproximada do rosto (s)
-      const gW = detectState.s * cw * 2.2;
-      const gH = gW * (220/600);
+          <div class="field">
+            <label>Somente lucrativas</label>
+            <select id="onlyProfitable">
+              <option value="yes" selected>Sim</option>
+              <option value="no">Não</option>
+            </select>
+          </div>
 
-      // rotação Z (inclinação da cabeça)
-      const ang = detectState.rz || 0;
+          <div class="field">
+            <label>Nº máximo de linhas</label>
+            <input id="limitRows" type="number" min="10" max="500" value="100" />
+          </div>
+        </div>
 
-      octx.save();
-      octx.translate(cx, cy - gH*0.1); // sobe um pouco p/ alinhar nos olhos
-      octx.rotate(ang);
-      octx.drawImage(glassesImg, -gW/2, -gH/2, gW, gH);
-      octx.restore();
-    }
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn" id="btnApply">Aplicar filtros</button>
+          <button class="btn gray" id="btnReset">Reset</button>
+        </div>
 
-    startBtn.addEventListener("click", () => {
-      msg.textContent = "Iniciando...";
+        <div class="hint">
+          Spot usa GET <code>/v1/arbitrage</code> com <code>buyExchange</code> e <code>sellExchange</code>. :contentReference[oaicite:5]{index=5}
+        </div>
+      </section>
 
-      // Jeeliz recomenda usar o Resizer para melhor resolução no mobile :contentReference[oaicite:2]{index=2}
-      JeelizResizer.size_canvas({
-        canvasId: "jeeFaceFilterCanvas",
-        callback: function(isError, bestVideoSettings){
-          if (isError){
-            msg.textContent = "Erro ao iniciar câmera.";
-            return;
-          }
+      <section class="card">
+        <h3>Status</h3>
+        <div id="statusBox" class="loading"><span class="dot"></span> Aguardando dados…</div>
+        <div class="hint" id="lastUpdate"></div>
+      </section>
+    </div>
 
-          JEELIZFACEFILTER.init({
-            canvasId: "jeeFaceFilterCanvas",
-            NNCPath: "https://appstatic.jeeliz.com/faceFilter/", // modelo NN_DEFAULT.json
-            videoSettings: bestVideoSettings,
-            callbackReady: function(errCode, spec){
-              if (errCode){
-                console.log("Jeeliz erro:", errCode);
-                msg.textContent = "Falhou no iPhone (WebGL).";
-                return;
-              }
-              ui.style.display = "none";
-            },
-            callbackTrack: function(detectState){
-              drawGlasses(detectState); // detectState tem x,y,s,rz e detected :contentReference[oaicite:3]{index=3}
-            }
-          });
-        }
-      });
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Par</th>
+            <th>Compra</th>
+            <th>Venda</th>
+            <th>Preço compra</th>
+            <th>Preço venda</th>
+            <th>Spread %</th>
+            <th>Lucro</th>
+            <th>Tempo</th>
+            <th>Links</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="9" class="muted">Sem dados ainda.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</div>
+
+<script>
+  // --------- UI State ----------
+  let currentTab="spot";
+  let timer=null;
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => [...document.querySelectorAll(sel)];
+
+  $$("#sidebar a").forEach?.(()=>{}); // noop
+
+  $$(".tab").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      $$(".tab").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      currentTab = btn.dataset.tab;
+      loadData();
     });
-  </script>
+  });
+
+  $("#btnApply").onclick = loadData;
+  $("#btnReload").onclick = loadData;
+  $("#btnReset").onclick = ()=>{
+    $("#minSpread").value=0.2;
+    $("#maxSpread").value=25;
+    $("#filterSymbol").value="";
+    $("#onlyProfitable").value="yes";
+    $("#limitRows").value=100;
+    loadData();
+  };
+
+  $("#autoRefresh").addEventListener("change", setupAutoRefresh);
+  $("#refreshSec").addEventListener("change", setupAutoRefresh);
+
+  function setStatus(txt){
+    $("#statusBox").innerHTML = `<span class="dot"></span> ${txt}`;
+  }
+
+  function fmt(n, d=8){
+    if(n===null || n===undefined || isNaN(n)) return "-";
+    const abs = Math.abs(n);
+    if(abs>=1000) return n.toLocaleString("pt-BR",{maximumFractionDigits:2});
+    return n.toLocaleString("pt-BR",{maximumFractionDigits:d});
+  }
+
+  function parsePairSymbol(pair){
+    if(!pair) return "";
+    return pair.split(/[\/\-_]/)[0].toUpperCase();
+  }
+
+  function calcSpreadPct(buy, sell){
+    if(!buy || !sell) return null;
+    return ((sell - buy) / buy) * 100;
+  }
+
+  async function fetchJSON(url){
+    const r = await fetch(url);
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    return r.json();
+  }
+
+  // --------- Data Loaders ----------
+  async function loadSpot(base){
+    const buyEx = encodeURIComponent($("#buyEx").value.trim());
+    const sellEx = encodeURIComponent($("#sellEx").value.trim());
+    const includePricesQuote = "true";
+    const url = `${base}/v1/arbitrage?buyExchange=${buyEx}&sellExchange=${sellEx}&includePricesQuote=${includePricesQuote}`;
+    const data = await fetchJSON(url); // {opportunities:[...]}
+    return (data.opportunities || []).map(o=>({
+      pair:o.pair,
+      buyExchange:o.buyExchange,
+      sellExchange:o.sellExchange,
+      buyPrice:o.buyPrice,
+      sellPrice:o.sellPrice,
+      spreadPct: calcSpreadPct(o.buyPrice, o.sellPrice),
+      profitAbs:o.profit ?? (o.sellPrice-o.buyPrice),
+      profitPct: null,
+      timestamp:o.timestamp,
+      buyLink:o.buy_exchange_link || null,
+      sellLink:o.sell_exchange_link || null,
+      raw:o
+    }));
+  }
+
+  async function loadFuture(base){
+    const ex = $("#buyEx").value.trim() || "";
+    const url = `${base}/v1/arbitrage/future${ex?`?exchanges=${encodeURIComponent(ex)}`:""}`;
+    const arr = await fetchJSON(url); // [...]
+    return (arr||[]).map(o=>({
+      pair:o.ticker,
+      buyExchange:o.exchange + " (spot)",
+      sellExchange:o.exchange + " (future)",
+      buyPrice:o.spotPrice,
+      sellPrice:o.futurePrice,
+      spreadPct:o.spreadPercentage ?? calcSpreadPct(o.spotPrice, o.futurePrice),
+      profitAbs:null,
+      profitPct:o.spreadPercentage,
+      timestamp:o.timestamp,
+      buyLink:null,
+      sellLink:null,
+      raw:o
+    }));
+  }
+
+  async function loadHighYield(base){
+    const url = `${base}/v1/arbitrage/high-yield`;
+    const arr = await fetchJSON(url); // [...]
+    return (arr||[]).map(o=>({
+      pair:o.crypto,
+      buyExchange:o.buy_exchange_name,
+      sellExchange:o.sell_exchange_name,
+      buyPrice:o.buy_price,
+      sellPrice:o.sell_price,
+      spreadPct:o.profit_percent ?? calcSpreadPct(o.buy_price, o.sell_price),
+      profitAbs:null,
+      profitPct:o.profit_percent,
+      timestamp:o.timestamp,
+      buyLink:o.buy_exchange_link,
+      sellLink:o.sell_exchange_link,
+      raw:o
+    }));
+  }
+
+  async function loadCandles(base){
+    // Candles precisa de um ID/unique; aqui só mostra aviso.
+    return [];
+  }
+
+  // --------- Render ----------
+  function renderRows(rows){
+    const minS = parseFloat($("#minSpread").value||0);
+    const maxS = parseFloat($("#maxSpread").value||999);
+    const sym = $("#filterSymbol").value.trim().toUpperCase();
+    const onlyProf = $("#onlyProfitable").value==="yes";
+    const limit = parseInt($("#limitRows").value||100,10);
+
+    let out = rows.filter(r=>{
+      const sp = r.spreadPct ?? 0;
+      if(sp<minS || sp>maxS) return false;
+      if(sym && parsePairSymbol(r.pair)!==sym) return false;
+      if(onlyProf && sp<=0) return false;
+      return true;
+    });
+
+    out.sort((a,b)=>(b.spreadPct||0)-(a.spreadPct||0));
+    out = out.slice(0, limit);
+
+    const tb = $("#tbody");
+    tb.innerHTML = out.length ? out.map(r=>{
+      const sp = r.spreadPct ?? 0;
+      const cls = sp>=0 ? "good" : "bad";
+      const profit = r.profitPct!=null ? `${fmt(r.profitPct,2)}%` : fmt(r.profitAbs,2);
+      const time = r.timestamp ? new Date(r.timestamp).toLocaleString("pt-BR") : (r.raw?.created_at || "—");
+
+      return `
+        <tr>
+          <td><b>${r.pair||"-"}</b></td>
+          <td><span class="pill">${r.buyExchange||"-"}</span></td>
+          <td><span class="pill">${r.sellExchange||"-"}</span></td>
+          <td>${fmt(r.buyPrice,8)}</td>
+          <td>${fmt(r.sellPrice,8)}</td>
+          <td class="spread ${cls}">${fmt(sp,2)}%</td>
+          <td>${profit}</td>
+          <td>${time}</td>
+          <td class="mini">
+            ${r.buyLink?`<a class="link" href="${r.buyLink}" target="_blank">buy</a>`:""}
+            ${r.sellLink?`&nbsp;|&nbsp;<a class="link" href="${r.sellLink}" target="_blank">sell</a>`:""}
+          </td>
+        </tr>
+      `;
+    }).join("") : `<tr><td colspan="9" class="muted">Nenhuma oportunidade com esses filtros.</td></tr>`;
+  }
+
+  // --------- Main Load ----------
+  async function loadData(){
+    const base = $("#baseUrl").value.replace(/\/$/,"");
+    try{
+      setStatus("Carregando "+currentTab+"…");
+      let rows=[];
+      if(currentTab==="spot") rows = await loadSpot(base);
+      else if(currentTab==="future") rows = await loadFuture(base);
+      else if(currentTab==="highyield") rows = await loadHighYield(base);
+      else if(currentTab==="candles") rows = await loadCandles(base);
+
+      renderRows(rows);
+      const now = new Date();
+      $("#lastUpdate").textContent = "Última atualização: " + now.toLocaleTimeString("pt-BR");
+      setStatus("OK • "+rows.length+" linhas recebidas");
+    }catch(e){
+      console.error(e);
+      $("#tbody").innerHTML = `<tr><td colspan="9" class="muted">Erro ao buscar dados. Veja console.</td></tr>`;
+      setStatus("Erro ao carregar (provável CORS/Base URL inválida)");
+    }
+    setupAutoRefresh();
+  }
+
+  function setupAutoRefresh(){
+    if(timer) clearInterval(timer);
+    if(!$("#autoRefresh").checked) return;
+    const sec = parseInt($("#refreshSec").value,10);
+    timer = setInterval(loadData, sec*1000);
+  }
+
+  // start
+  loadData();
+</script>
 </body>
 </html>
